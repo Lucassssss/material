@@ -1,8 +1,8 @@
 (function() {
 'use strict';
 var SELECT_EDGE_MARGIN = 8;
+var SELECT_PADDING = 8;
 var SELECT_NEXT_ID = 0;
-var SELECT_OPTION_HEIGHT = 64;
 
 /*
 <md-select ng-model="choice" ng-model-options="{ trackBy: 'choice.id' }">
@@ -51,8 +51,8 @@ function SelectDirective($parse, $timeout) {
     selectCtrl.init(ngModel);
 
     function checkOverflow() {
-      var isOverflow = selectNode.scrollHeight > selectNode.offsetHeight;
-      if (isOverflow) {
+      var isScrollable = selectNode.scrollHeight > selectNode.offsetHeight;
+      if (isScrollable) {
         element.addClass('md-overflow');
       }
     }
@@ -332,6 +332,7 @@ function SelectProvider($$interimElementProvider) {
 
       return transitionEndPromise(selectEl);
       
+      // TODO fixed search box at top, with separate container for options
       function animateSelect() {
         var parentRect = options.parent[0].getBoundingClientRect();
         var maxWidth = parentRect.width - SELECT_EDGE_MARGIN * 2;
@@ -340,7 +341,7 @@ function SelectProvider($$interimElementProvider) {
           selectEl.css('max-width', maxWidth + 'px');
         }
 
-        var isOverflow = selectEl.hasClass('md-overflow');
+        var isScrollable = selectEl.hasClass('md-overflow');
         var selectRect = selectNode.getBoundingClientRect();
         var targetRect = angular.element(options.target)[0].getBoundingClientRect();
         var selectedOption = selectNode.querySelector('md-option[selected]');
@@ -354,6 +355,8 @@ function SelectProvider($$interimElementProvider) {
         var top;
         var transformOrigin;
 
+        // If we have an md-option[selected], scroll to it and try use available space 
+        // to center it
         if (selectedOption) {
           var selectedRect = {
             left: selectedOption.offsetLeft,
@@ -362,7 +365,7 @@ function SelectProvider($$interimElementProvider) {
             width: selectedOption.offsetWidth
           };
 
-          if (isOverflow) {
+          if (isScrollable) {
             var buffer = selectRect.height / 2;
             selectNode.scrollTop = selectedRect.top + selectedRect.height / 2 - buffer;
             if (spaceAvailable.top < buffer) {
@@ -383,9 +386,12 @@ function SelectProvider($$interimElementProvider) {
               selectedRect.top + selectNode.scrollTop;
           transformOrigin = (selectedRect.left + selectedRect.width / 2) + 'px ' +
               (selectedRect.top + selectedRect.height / 2 - selectNode.scrollTop) + 'px';
+
+        // If nothing's selected, just center the select over the target,
+        // and don't scroll it.
         } else {
           var firstOption = selectNode.querySelector('md-option');
-          var optionRect = optionRect ? {
+          var optionRect = firstOption ? {
             left: firstOption.offsetLeft,
             top: firstOption.offsetTop,
             height: firstOption.offsetHeight,
@@ -393,7 +399,12 @@ function SelectProvider($$interimElementProvider) {
           } : { left: 0, top: 0, height: 0, width: 0 };
 
           left = targetRect.left + optionRect.left;
-          top = targetRect.top + optionRect.top;
+          top = targetRect.top + targetRect.height / 2 - optionRect.height / 2 - optionRect.top;
+          if (firstOption) {
+            var numOptions = selectEl.find('md-option').length;
+            top -= optionRect.height * (Math.floor(numOptions / 2));
+          }
+          transformOrigin = '0 ' + selectRect.height / 2 + 'px';
         }
 
         // Make sure it's within the window
@@ -406,17 +417,15 @@ function SelectProvider($$interimElementProvider) {
           Math.max(top, SELECT_EDGE_MARGIN)
         );
 
-        options.scaleTransform = 'scale(' + 
-          Math.min(targetRect.width / selectRect.width, 1.0) + ',' +
-          Math.min(targetRect.height / selectRect.height, 1.0) + 
-        ')';
-        
         selectEl.css({
           left: left + 'px',
           top: top + 'px'
         });
-        selectEl.css($mdConstant.CSS.TRANSFORM, options.scaleTransform);
-        selectEl.css('transform-origin', transformOrigin);
+        selectEl.css($mdConstant.CSS.TRANSFORM, 'scale(' + 
+          Math.min(targetRect.width / selectRect.width, 1.0) + ',' +
+          Math.min(targetRect.height / selectRect.height, 1.0) + 
+        ')');
+        selectEl.css($mdConstant.CSS.TRANSFORM_ORIGIN, transformOrigin);
 
         $$rAF(function() {
           element.addClass('md-enter');
@@ -432,6 +441,7 @@ function SelectProvider($$interimElementProvider) {
       return transitionEndPromise(element).then(function() {
         element.remove();
         options.backdrop.remove();
+        console.log('removed');
       });
     }
 
